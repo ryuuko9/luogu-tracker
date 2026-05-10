@@ -1,0 +1,6 @@
+node_modules/
+out/
+.userdata/
+.tmp-auth/
+.tmp-scraper/
+.tmp-test/
