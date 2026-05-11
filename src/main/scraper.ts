@@ -1,4 +1,5 @@
 import type { Session } from 'electron'
+import { filterKnowledgeTagInfos, mapKnowledgeProblemTags } from './knowledgeTags'
 
 const BASE_URL = 'https://www.luogu.com.cn'
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
@@ -25,6 +26,8 @@ interface RawTraining {
 interface TagInfo {
   id: number
   name: string
+  type: number
+  parent: number | null
 }
 
 export interface ScrapedData {
@@ -84,15 +87,24 @@ async function fetchPage(url: string, session?: Session): Promise<string> {
   return resp.text()
 }
 
+export async function fetchTagCatalog(): Promise<TagInfo[]> {
+  const resp = await getElectronNet().fetch(`${BASE_URL}/_lfe/tags/zh-CN`, {
+    headers: { 'User-Agent': UA }
+  })
+  const data = await resp.json() as { tags: TagInfo[] }
+  return data.tags
+}
+
+export async function fetchKnowledgeTagCatalog(): Promise<TagInfo[]> {
+  return filterKnowledgeTagInfos(await fetchTagCatalog())
+}
+
 // 获取标签映射
 async function fetchTagMap(): Promise<Map<number, string>> {
   const tagMap = new Map<number, string>()
   try {
-    const resp = await getElectronNet().fetch(`${BASE_URL}/_lfe/tags/zh-CN`, {
-      headers: { 'User-Agent': UA }
-    })
-    const data = await resp.json() as { tags: TagInfo[] }
-    for (const tag of data.tags) {
+    const tags = await fetchKnowledgeTagCatalog()
+    for (const tag of tags) {
       tagMap.set(tag.id, tag.name)
     }
   } catch {
@@ -167,7 +179,7 @@ export async function scrapeTraining(input: string, session?: Session, hasCreden
       pid: p.pid,
       title: p.title,
       difficulty: p.difficulty,
-      tags: (p.tags || []).map(tid => tagMap.get(tid) || `标签${tid}`)
+      tags: mapKnowledgeProblemTags(p.tags || [], tagMap)
     }))
   }
 }

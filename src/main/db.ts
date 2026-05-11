@@ -2,9 +2,36 @@ import initSqlJs, { type BindParams, Database } from 'sql.js'
 import { app } from 'electron'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import path from 'path'
+import { normalizeKnowledgeTagNames } from './knowledgeTags'
 
 let db: Database
 let dbPath: string
+const TAG_CATALOG_FILTER_VERSION = 'knowledge-tag-type2-v1'
+
+function getUserVersion(): number {
+  const rows = db.exec('PRAGMA user_version')
+  return rows.length > 0 ? rows[0].values[0][0] as number : 0
+}
+
+function hasColumn(table: string, column: string): boolean {
+  const rows = db.exec(`PRAGMA table_info(${table})`)
+  if (rows.length === 0) return false
+  return rows[0].values.some(value => String(value[1]) === column)
+}
+
+function hasTable(table: string): boolean {
+  const rows = db.exec(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = '${table}'`)
+  return rows.length > 0 && rows[0].values.length > 0
+}
+
+function parseTagJson(value: unknown): string[] {
+  try {
+    const parsed = JSON.parse(String(value ?? '[]')) as unknown
+    return Array.isArray(parsed) ? parsed.map(tag => String(tag)) : []
+  } catch {
+    return []
+  }
+}
 
 function save(): void {
   const data = db.export()
@@ -32,8 +59,7 @@ export async function initDatabase(): Promise<void> {
 }
 
 function migrate(): void {
-  const rows = db.exec('PRAGMA user_version')
-  const version = rows.length > 0 ? rows[0].values[0][0] as number : 0
+  const version = getUserVersion()
 
   if (version < 1) {
     db.run(`
@@ -71,6 +97,38 @@ function migrate(): void {
     `)
     db.run('PRAGMA user_version = 2')
   }
+
+  if (version < 3) {
+    if (!hasColumn('problems', 'original_tags')) {
+      db.run(`ALTER TABLE problems ADD COLUMN original_tags TEXT DEFAULT '[]'`)
+    }
+    if (!hasColumn('problems', 'user_tags')) {
+      db.run(`ALTER TABLE problems ADD COLUMN user_tags TEXT DEFAULT '[]'`)
+    }
+    if (!hasColumn('problems', 'hidden_original_tags')) {
+      db.run(`ALTER TABLE problems ADD COLUMN hidden_original_tags TEXT DEFAULT '[]'`)
+    }
+
+    db.run(`
+      UPDATE problems
+      SET original_tags = CASE
+        WHEN COALESCE(original_tags, '[]') = '[]' THEN COALESCE(tags, '[]')
+        ELSE original_tags
+      END
+    `)
+    db.run(`UPDATE problems SET user_tags = COALESCE(user_tags, '[]')`)
+    db.run(`UPDATE problems SET hidden_original_tags = COALESCE(hidden_original_tags, '[]')`)
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS tag_catalog (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        updated_at TEXT NOT NULL
+      )
+    `)
+    db.run('CREATE INDEX IF NOT EXISTS idx_tag_catalog_name ON tag_catalog(name)')
+    db.run('PRAGMA user_version = 3')
+  }
 }
 
 // === 辅助函数 ===
@@ -103,8 +161,7 @@ function ensureSettingsTable(): void {
     )
   `)
 
-  const versionRow = db.exec('PRAGMA user_version')
-  const version = versionRow.length > 0 ? versionRow[0].values[0][0] as number : 0
+  const version = getUserVersion()
   if (version < 2) {
     db.run('PRAGMA user_version = 2')
     save()
@@ -136,8 +193,12 @@ export function insertProblem(
   difficulty: number, tags: string
 ): void {
   run(
-    'INSERT INTO problems (training_id, pid, title, difficulty, tags) VALUES (?, ?, ?, ?, ?)',
-    [trainingId, pid, title, difficulty, tags]
+    `
+      INSERT INTO problems (
+        training_id, pid, title, difficulty, tags, original_tags, user_tags, hidden_original_tags
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [trainingId, pid, title, difficulty, tags, tags, '[]', '[]']
   )
 }
 
@@ -155,6 +216,13 @@ export function toggleProblemCompleted(id: number): number {
 
 export function updateProblemNote(id: number, note: string): void {
   run('UPDATE problems SET note = ? WHERE id = ?', [note, id])
+}
+
+export function updateProblemTags(id: number, userTags: string, hiddenOriginalTags: string): void {
+  run(
+    'UPDATE problems SET user_tags = ?, hidden_original_tags = ? WHERE id = ?',
+    [userTags, hiddenOriginalTags, id]
+  )
 }
 
 export function getCompletedCount(trainingId: number): number {
@@ -181,6 +249,106 @@ export function getSetting(key: string): string | null {
   ensureSettingsTable()
   const row = queryOne('SELECT value FROM settings WHERE key = ?', [key])
   return typeof row?.value === 'string' ? row.value : null
+}
+
+export function getTagCatalog(): { tags: string[]; updatedAt: string | null } {
+  if (!hasTable('tag_catalog')) {
+    return { tags: [], updatedAt: null }
+  }
+
+  if (getSetting('tag_catalog_filter_version') !== TAG_CATALOG_FILTER_VERSION) {
+    return { tags: [], updatedAt: null }
+  }
+
+  const rows = queryAll('SELECT name FROM tag_catalog ORDER BY name COLLATE NOCASE ASC')
+  return {
+    tags: rows.map(row => String(row.name ?? '')),
+    updatedAt: getSetting('tag_catalog_updated_at')
+  }
+}
+
+export function replaceTagCatalog(tags: string[]): { tags: string[]; updatedAt: string } {
+  ensureSettingsTable()
+
+  if (!hasTable('tag_catalog')) {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS tag_catalog (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        updated_at TEXT NOT NULL
+      )
+    `)
+    db.run('CREATE INDEX IF NOT EXISTS idx_tag_catalog_name ON tag_catalog(name)')
+  }
+
+  const normalizedTags = normalizeKnowledgeTagNames(tags)
+    .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  const updatedAt = new Date().toISOString()
+
+  db.run('DELETE FROM tag_catalog')
+  for (const tag of normalizedTags) {
+    db.run('INSERT INTO tag_catalog (name, updated_at) VALUES (?, ?)', [tag, updatedAt])
+  }
+  db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tag_catalog_updated_at', updatedAt])
+  db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['tag_catalog_filter_version', TAG_CATALOG_FILTER_VERSION])
+  save()
+
+  return { tags: normalizedTags, updatedAt }
+}
+
+export function sanitizeProblemKnowledgeTags(knowledgeTags: string[]): void {
+  const allowedTags = new Set(normalizeKnowledgeTagNames(knowledgeTags))
+  if (allowedTags.size === 0 || !hasTable('problems')) return
+
+  const rows = queryAll('SELECT * FROM problems')
+  const hasOriginalTags = hasColumn('problems', 'original_tags')
+  const hasUserTags = hasColumn('problems', 'user_tags')
+  const hasHiddenOriginalTags = hasColumn('problems', 'hidden_original_tags')
+  let changed = false
+
+  for (const row of rows) {
+    const id = Number(row.id)
+    const nextTags = normalizeKnowledgeTagNames(parseTagJson(row.tags), allowedTags)
+
+    if (hasOriginalTags && hasUserTags && hasHiddenOriginalTags) {
+      const nextOriginalTags = normalizeKnowledgeTagNames(parseTagJson(row.original_tags ?? row.tags), allowedTags)
+      const nextUserTags = normalizeKnowledgeTagNames(parseTagJson(row.user_tags), allowedTags)
+      const nextHiddenOriginalTags = normalizeKnowledgeTagNames(parseTagJson(row.hidden_original_tags), new Set(nextOriginalTags))
+
+      if (
+        JSON.stringify(nextTags) !== String(row.tags ?? '[]')
+        || JSON.stringify(nextOriginalTags) !== String(row.original_tags ?? '[]')
+        || JSON.stringify(nextUserTags) !== String(row.user_tags ?? '[]')
+        || JSON.stringify(nextHiddenOriginalTags) !== String(row.hidden_original_tags ?? '[]')
+      ) {
+        db.run(
+          `
+            UPDATE problems
+            SET tags = ?, original_tags = ?, user_tags = ?, hidden_original_tags = ?
+            WHERE id = ?
+          `,
+          [
+            JSON.stringify(nextTags),
+            JSON.stringify(nextOriginalTags),
+            JSON.stringify(nextUserTags),
+            JSON.stringify(nextHiddenOriginalTags),
+            id
+          ]
+        )
+        changed = true
+      }
+      continue
+    }
+
+    if (JSON.stringify(nextTags) !== String(row.tags ?? '[]')) {
+      db.run('UPDATE problems SET tags = ? WHERE id = ?', [JSON.stringify(nextTags), id])
+      changed = true
+    }
+  }
+
+  if (changed) {
+    save()
+  }
 }
 
 export function setSetting(key: string, value: string): void {

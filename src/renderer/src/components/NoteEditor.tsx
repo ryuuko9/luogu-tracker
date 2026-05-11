@@ -1,6 +1,6 @@
 import { useRef, useCallback, useEffect, useState, memo } from 'react'
 import { flushSync } from 'react-dom'
-import { Crepe } from '@milkdown/crepe'
+import { Crepe, CrepeFeature } from '@milkdown/crepe'
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react'
 import type { Ctx } from '@milkdown/kit/ctx'
 import { commandsCtx, editorViewCtx } from '@milkdown/kit/core'
@@ -22,6 +22,8 @@ import type { EditorView } from '@milkdown/prose/view'
 import '@milkdown/crepe/theme/common/style.css'
 import '@milkdown/crepe/theme/frame.css'
 import { hasMeaningfulContent, normalizeEditorMarkdown, parseTableDimensions } from './NoteEditor.utils'
+import TagEditorDialog from './TagEditorDialog'
+import type { TagCatalogState } from '../types'
 
 // === 类型 ===
 interface ContextMenuPos { x: number; y: number }
@@ -330,7 +332,15 @@ function EditorInner({ markdown, onMarkdownUpdate, onRegisterView, onRegisterAct
   }, [onMarkdownUpdate])
 
   const { get } = useEditor((root) => {
-    const crepe = new Crepe({ root, defaultValue: markdown })
+    const crepe = new Crepe({
+      root,
+      defaultValue: markdown,
+      featureConfigs: {
+        [CrepeFeature.Placeholder]: {
+          text: '请输入内容...'
+        }
+      }
+    })
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, md) => debouncedUpdate(md))
     })
@@ -394,12 +404,31 @@ function EditorInner({ markdown, onMarkdownUpdate, onRegisterView, onRegisterAct
 interface Props {
   note: string
   problemId: number
+  completed: boolean
+  originalTags: string[]
+  userTags: string[]
+  hiddenOriginalTags: string[]
   onUpdateNote: (id: number, note: string) => void
+  onUpdateTags: (id: number, userTags: string[], hiddenOriginalTags: string[]) => Promise<void>
+  onLoadTagCatalog: () => Promise<TagCatalogState>
+  onRefreshTagCatalog: () => Promise<TagCatalogState>
 }
 
-const NoteEditor = memo(function NoteEditor({ note, problemId, onUpdateNote }: Props) {
+const NoteEditor = memo(function NoteEditor({
+  note,
+  problemId,
+  completed,
+  originalTags,
+  userTags,
+  hiddenOriginalTags,
+  onUpdateNote,
+  onUpdateTags,
+  onLoadTagCatalog,
+  onRefreshTagCatalog,
+}: Props) {
   const [sourceMode, setSourceMode] = useState(false)
   const [markdown, setMarkdown] = useState(note)
+  const [showTagEditor, setShowTagEditor] = useState(false)
   const [contextMenu, setContextMenu] = useState<ContextMenuPos | null>(null)
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [editorKey, setEditorKey] = useState(0)
@@ -563,7 +592,26 @@ const NoteEditor = memo(function NoteEditor({ note, problemId, onUpdateNote }: P
         >
           {sourceMode ? '退出源码' : '</>'}
         </button>
+        {completed && (
+          <button
+            className="source-toggle"
+            onClick={() => setShowTagEditor(true)}
+            title="编辑知识点标签"
+          >
+            #
+          </button>
+        )}
       </div>
+      <TagEditorDialog
+        visible={showTagEditor}
+        originalTags={originalTags}
+        userTags={userTags}
+        hiddenOriginalTags={hiddenOriginalTags}
+        onClose={() => setShowTagEditor(false)}
+        onLoadCatalog={onLoadTagCatalog}
+        onRefreshCatalog={onRefreshTagCatalog}
+        onSave={(nextUserTags, nextHiddenOriginalTags) => onUpdateTags(problemId, nextUserTags, nextHiddenOriginalTags)}
+      />
 
       {tableDialog.visible && (
         <div className="dialog-overlay" onClick={closeTableDialog}>

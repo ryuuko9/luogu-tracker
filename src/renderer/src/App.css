@@ -15,6 +15,12 @@
   --success: #2e7d32;
   --shadow: 0 1px 3px rgba(0,0,0,0.08);
   --radius: 6px;
+  --icon-button-bg: #f4f7fb;
+  --icon-button-hover: #e7edf5;
+  --icon-button-border: #d5dde8;
+  --editor-surface: #ffffff;
+  --editor-surface-muted: #f8fafc;
+  --editor-text: #1a1a2e;
 }
 
 [data-theme="dark"] {
@@ -32,6 +38,12 @@
   --danger: #ef5350;
   --success: #66bb6a;
   --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --icon-button-bg: #24324d;
+  --icon-button-hover: #304260;
+  --icon-button-border: #3b5276;
+  --editor-surface: #16213e;
+  --editor-surface-muted: #1d2a49;
+  --editor-text: #e0e0e0;
 }
 
 /* === Reset === */
@@ -241,15 +253,37 @@ body {
 }
 
 .btn-theme {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 6px 10px;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--icon-button-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--icon-button-border);
+  border-radius: 10px;
+  padding: 0;
   cursor: pointer;
-  font-size: 16px;
-  transition: background 0.15s;
+  box-shadow: var(--shadow);
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
 }
-.btn-theme:hover { background: var(--bg-hover); }
+.btn-theme:hover {
+  background: var(--icon-button-hover);
+  border-color: var(--accent);
+}
+.btn-theme:active {
+  transform: translateY(1px);
+}
+
+.btn-theme-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  font-size: 17px;
+}
 
 /* === Problem List === */
 .problem-list-container {
@@ -308,6 +342,10 @@ body {
   transition: border-color 0.2s;
 }
 .filter-search:focus { border-color: var(--accent); }
+.filter-search::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
 
 .filter-select {
   padding: 8px 12px;
@@ -452,10 +490,11 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   margin: 0 24px 12px;
-  background: var(--bg-primary);
+  background: var(--editor-surface);
   min-height: 200px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .note-editor-wysiwyg {
@@ -468,6 +507,38 @@ body {
 
 .note-editor-wysiwyg .milkdown {
   min-height: 180px;
+}
+
+.note-editor .milkdown,
+.note-editor .milkdown .editor,
+.note-editor .milkdown .crepe,
+.note-editor .milkdown .ProseMirror,
+.note-editor .milkdown .cm-editor,
+.note-editor .milkdown .cm-scroller,
+.note-editor .milkdown .cm-content {
+  background: var(--editor-surface) !important;
+  color: var(--editor-text) !important;
+}
+
+.note-editor .milkdown .ProseMirror,
+.note-editor .milkdown .cm-content,
+.note-editor .milkdown [contenteditable="true"] {
+  color: var(--editor-text) !important;
+  caret-color: var(--accent);
+}
+
+.note-editor .milkdown .toolbar,
+.note-editor .milkdown .crepe-toolbar,
+.note-editor .milkdown .milkdown-toolbar,
+.note-editor .milkdown .cm-gutters {
+  background: var(--editor-surface-muted) !important;
+  color: var(--editor-text) !important;
+  border-color: var(--border) !important;
+}
+
+.note-editor .milkdown .crepe-placeholder::before {
+  color: var(--text-secondary) !important;
+  opacity: 1 !important;
 }
 
 /* 覆盖 Crepe 默认的 120px 左右内边距 */
@@ -486,8 +557,8 @@ body {
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
   font-size: 14px;
   line-height: 1.6;
-  color: var(--text-primary);
-  background: var(--bg-primary);
+  color: var(--editor-text);
+  background: var(--editor-surface);
   tab-size: 2;
 }
 .note-editor-source.hidden {
@@ -502,6 +573,7 @@ body {
   align-items: center;
   padding: 4px 8px;
   border-top: 1px solid var(--border);
+  background: var(--editor-surface-muted);
 }
 
 .source-toggle {
@@ -522,6 +594,10 @@ body {
 .source-toggle.active {
   color: var(--accent);
   background: var(--accent-light);
+}
+
+.note-editor-footer .source-toggle + .source-toggle {
+  margin-left: 6px;
 }
 
 /* === Milkdown Wrapper === */
@@ -647,6 +723,94 @@ body {
   box-shadow: 0 8px 32px rgba(0,0,0,0.2);
 }
 
+.tag-editor-dialog {
+  width: 760px;
+  max-width: 92vw;
+}
+
+.tag-editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tag-editor-meta {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.tag-editor-section {
+  margin-top: 18px;
+}
+
+.tag-editor-section-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.tag-editor-chip-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tag-editor-chip-panel {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+}
+
+.tag-editor-chip {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.tag-editor-chip-button {
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tag-editor-chip-button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tag-editor-chip-selected {
+  background: var(--accent-light);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tag-editor-chip-hidden {
+  background: var(--bg-tertiary);
+  border-style: dashed;
+  color: var(--text-muted);
+}
+
+.tag-editor-chip-visible {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.tag-editor-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 6px 0;
+}
+
 .dialog h3 {
   font-size: 18px;
   margin-bottom: 12px;
@@ -678,6 +842,10 @@ body {
   transition: border-color 0.2s;
 }
 .dialog-input:focus { border-color: var(--accent); }
+.dialog-input::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
 
 .dialog-textarea {
   width: 100%;
@@ -693,6 +861,10 @@ body {
   resize: vertical;
 }
 .dialog-textarea:focus { border-color: var(--accent); }
+.dialog-textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
 
 .dialog-error {
   color: var(--danger);

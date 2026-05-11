@@ -14,6 +14,9 @@ export interface Problem {
   title: string
   difficulty: number
   tags: string[]
+  originalTags: string[]
+  userTags: string[]
+  hiddenOriginalTags: string[]
   completed: boolean
   note: string
 }
@@ -21,6 +24,11 @@ export interface Problem {
 export interface UserInfo {
   nickname: string
   avatar: string
+}
+
+export interface TagCatalogState {
+  tags: string[]
+  updatedAt: string | null
 }
 
 export const DIFFICULTY_LABELS: Record<number, string> = {

@@ -4,12 +4,14 @@ import ProblemList from './components/ProblemList'
 import ImportDialog from './components/ImportDialog'
 import { useApi } from './hooks/useApi'
 import type { Training } from './types'
+import { resolveInitialTheme, THEME_STORAGE_KEY, type ThemeMode } from './themePreference'
 
 export default function App() {
   const {
     trainings, problems, importing, userInfo,
     fetchTrainings, fetchProblems, importTraining,
-    deleteTraining, toggleProblem, updateNote,
+    deleteTraining, toggleProblem, updateNote, updateProblemTags,
+    getTagCatalog, refreshTagCatalog,
     fetchLoginStatus, handleLogin, handleLogout
   } = useApi()
 
@@ -17,8 +19,10 @@ export default function App() {
   const [showImport, setShowImport] = useState(false)
   const [showLoginDialog, setShowLoginDialog] = useState(false)
   const [pendingDeleteTraining, setPendingDeleteTraining] = useState<Training | null>(null)
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY)
+    return resolveInitialTheme(savedTheme, prefersDark)
   })
 
   // 初始化加载题单列表和登录状态
@@ -56,6 +60,7 @@ export default function App() {
   // 深色模式
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme)
   }, [theme])
 
   const handleImport = useCallback(async (input: string) => {
@@ -99,9 +104,12 @@ export default function App() {
           <button
             className="btn-theme"
             onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
-            title="切换深色模式"
+            title={theme === 'light' ? '切换深色模式' : '切换浅色模式'}
+            aria-label={theme === 'light' ? '切换深色模式' : '切换浅色模式'}
           >
-            {theme === 'light' ? '🌙' : '☀️'}
+            <span className="btn-theme-icon" aria-hidden="true">
+              {theme === 'light' ? '🌙' : '☀️'}
+            </span>
           </button>
         </div>
         <ProblemList
@@ -110,6 +118,9 @@ export default function App() {
           allTags={allTags}
           onToggle={toggleProblem}
           onUpdateNote={updateNote}
+          onUpdateTags={updateProblemTags}
+          onLoadTagCatalog={getTagCatalog}
+          onRefreshTagCatalog={refreshTagCatalog}
         />
       </main>
       <ImportDialog

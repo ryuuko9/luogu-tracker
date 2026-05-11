@@ -10,19 +10,42 @@ interface Props {
   allTags: string[]
   onToggle: (id: number) => void
   onUpdateNote: (id: number, note: string) => void
+  onUpdateTags: (id: number, userTags: string[], hiddenOriginalTags: string[]) => Promise<void>
+  onLoadTagCatalog: () => Promise<{ tags: string[]; updatedAt: string | null }>
+  onRefreshTagCatalog: () => Promise<{ tags: string[]; updatedAt: string | null }>
 }
 
-export default function ProblemList({ problems, trainingId, allTags, onToggle, onUpdateNote }: Props) {
+export default function ProblemList({
+  problems,
+  trainingId,
+  allTags,
+  onToggle,
+  onUpdateNote,
+  onUpdateTags,
+  onLoadTagCatalog,
+  onRefreshTagCatalog,
+}: Props) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'uncompleted'>('all')
   const [difficultyFilter, setDifficultyFilter] = useState<string | null>(null)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<number | null>(null)
 
-  // 仅在切换题单时收起编辑器
+  // 切换题单后重置筛选状态，避免沿用上一个题单的过滤条件导致空列表
   useEffect(() => {
+    setSearch('')
+    setStatusFilter('all')
+    setDifficultyFilter(null)
+    setTagFilter(null)
     setExpandedId(null)
   }, [trainingId])
+
+  // 当前题单不再包含已选标签时，自动清理失效标签筛选
+  useEffect(() => {
+    if (tagFilter && !allTags.includes(tagFilter)) {
+      setTagFilter(null)
+    }
+  }, [allTags, tagFilter])
 
   const filtered = useMemo(() => {
     return problems.filter(p => {
@@ -91,7 +114,14 @@ export default function ProblemList({ problems, trainingId, allTags, onToggle, o
               <NoteEditor
                 note={p.note}
                 problemId={p.id}
+                completed={p.completed}
+                originalTags={p.originalTags}
+                userTags={p.userTags}
+                hiddenOriginalTags={p.hiddenOriginalTags}
                 onUpdateNote={onUpdateNote}
+                onUpdateTags={onUpdateTags}
+                onLoadTagCatalog={onLoadTagCatalog}
+                onRefreshTagCatalog={onRefreshTagCatalog}
               />
             )}
           </div>

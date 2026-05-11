@@ -15,8 +15,14 @@
   "include": [
     "src/main/luoguAuth.ts",
     "src/main/luoguAuth.test.ts",
+    "src/main/knowledgeTags.ts",
+    "src/main/knowledgeTags.test.ts",
     "src/main/scraper.ts",
     "src/main/scraper.test.ts",
+    "src/renderer/src/problemTags.ts",
+    "src/renderer/src/problemTags.test.ts",
+    "src/renderer/src/themePreference.ts",
+    "src/renderer/src/themePreference.test.ts",
     "src/renderer/src/components/NoteEditor.utils.ts",
     "src/renderer/src/components/NoteEditor.utils.test.ts"
   ]

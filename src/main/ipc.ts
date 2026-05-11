@@ -1,7 +1,60 @@
 import { ipcMain, shell, Session } from 'electron'
 import * as db from './db'
-import { scrapeTraining } from './scraper'
+import { fetchKnowledgeTagCatalog, scrapeTraining } from './scraper'
 import { openLoginWindow, getLoginStatus, logout } from './luoguAuth'
+
+function parseTagList(value: unknown): string[] {
+  try {
+    const parsed = JSON.parse(String(value ?? '[]')) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map(tag => String(tag).trim())
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+function mergeVisibleTags(
+  completed: boolean,
+  originalTags: string[],
+  userTags: string[],
+  hiddenOriginalTags: string[],
+): string[] {
+  if (!completed) return []
+
+  const originalSet = new Set(originalTags)
+  const hiddenSet = new Set(hiddenOriginalTags)
+  const merged = originalTags.filter(tag => !hiddenSet.has(tag))
+  for (const tag of userTags) {
+    if (originalSet.has(tag)) continue
+    if (!merged.includes(tag)) {
+      merged.push(tag)
+    }
+  }
+  return merged
+}
+
+function mapProblemRow(row: Record<string, unknown>) {
+  const completed = Number(row.completed ?? 0) === 1
+  const originalTags = parseTagList(row.original_tags ?? row.tags)
+  const userTags = parseTagList(row.user_tags)
+  const hiddenOriginalTags = parseTagList(row.hidden_original_tags)
+
+  return {
+    id: Number(row.id),
+    trainingId: Number(row.training_id),
+    pid: String(row.pid ?? ''),
+    title: String(row.title ?? ''),
+    difficulty: Number(row.difficulty ?? -1),
+    originalTags,
+    userTags,
+    hiddenOriginalTags,
+    tags: mergeVisibleTags(completed, originalTags, userTags, hiddenOriginalTags),
+    completed,
+    note: String(row.note ?? '')
+  }
+}
 
 export function registerIpcHandlers(luoguSession: Session): void {
   // === 登录 ===
@@ -71,16 +124,7 @@ export function registerIpcHandlers(luoguSession: Session): void {
   // === 获取题单下的题目 ===
   ipcMain.handle('get-problems', (_event, trainingId: number) => {
     const rows = db.getProblemsByTraining(trainingId)
-    return rows.map(r => ({
-      id: Number(r.id),
-      trainingId: Number(r.training_id),
-      pid: String(r.pid ?? ''),
-      title: String(r.title ?? ''),
-      difficulty: Number(r.difficulty ?? -1),
-      tags: JSON.parse(String(r.tags ?? '[]')) as string[],
-      completed: Number(r.completed ?? 0) === 1,
-      note: String(r.note ?? '')
-    }))
+    return rows.map(mapProblemRow)
   })
 
   // === 切换题目完成状态 ===
@@ -94,9 +138,27 @@ export function registerIpcHandlers(luoguSession: Session): void {
     db.updateProblemNote(id, note)
   })
 
+  // === 更新题目标签 ===
+  ipcMain.handle('update-problem-tags', (_event, id: number, userTags: string[], hiddenOriginalTags: string[]) => {
+    db.updateProblemTags(id, JSON.stringify(userTags), JSON.stringify(hiddenOriginalTags))
+  })
+
   // === 获取所有标签 ===
   ipcMain.handle('get-all-tags', () => {
     return db.getAllTags()
+  })
+
+  // === 获取本地标签全集 ===
+  ipcMain.handle('get-tag-catalog', () => {
+    return db.getTagCatalog()
+  })
+
+  // === 刷新本地标签全集 ===
+  ipcMain.handle('refresh-tag-catalog', async () => {
+    const tags = await fetchKnowledgeTagCatalog()
+    const nextCatalog = db.replaceTagCatalog(tags.map(tag => tag.name))
+    db.sanitizeProblemKnowledgeTags(nextCatalog.tags)
+    return nextCatalog
   })
 
   // === 打开外部链接 ===
